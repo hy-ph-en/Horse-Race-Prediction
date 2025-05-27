@@ -29,7 +29,7 @@ class Metrics:
 
         return df
     
-    def add_within_race_ranks(df: pd.DataFrame) -> pd.DataFrame:
+    def add_within_race_ranks(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds within-race rank features:
         - SpeedPrev_rank: rank of Speed_PreviousRun_mps within each Race_ID
@@ -54,7 +54,7 @@ class Metrics:
         return df
 
 
-    def add_form_momentum(df: pd.DataFrame, window: int = 3) -> pd.DataFrame:
+    def add_form_momentum(self, df: pd.DataFrame, window: int = 3) -> pd.DataFrame:
         """
         Adds form and momentum features:
         - Rolling mean and trend of timeSecs over last `window` runs per horse
@@ -93,7 +93,7 @@ class Metrics:
         return df
 
 
-    def add_synergy_interactions(df: pd.DataFrame) -> pd.DataFrame:
+    def add_synergy_interactions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds interaction features:
         - Jockey_Trainer_pair: hashed combination of Trainer and Jockey
@@ -119,7 +119,7 @@ class Metrics:
         return df
 
 
-    def add_market_wisdom(df: pd.DataFrame) -> pd.DataFrame:
+    def add_market_wisdom(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Adds market-based features:
         - implied_prob: 1 / betfairSP
@@ -136,7 +136,7 @@ class Metrics:
         return df
 
 
-    def add_calibration_prep(df: pd.DataFrame) -> pd.DataFrame:
+    def add_calibration_prep(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepares the target for probability models by adding a softmax-ready
         indicator and drop raw Position if needed.
