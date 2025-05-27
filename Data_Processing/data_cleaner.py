@@ -17,10 +17,7 @@ from metrics import Metrics
 from configuration import Config
 
 
-def clean_dataset(
-    input_csv: str,
-    output_csv: str = None
-) -> pd.DataFrame:
+def clean_dataset() -> pd.DataFrame:
     """
     Load and clean the dataset with a universal missing-value strategy.
 
@@ -31,13 +28,17 @@ def clean_dataset(
     Returns:
     - Cleaned pandas DataFrame
     """
+    #Class Loading
+    metrics = Metrics()
+    config = Config()
+
+    #File Naming
+    input_csv = config.input_csv
+    output_csv = config.output_csv
 
     #Load Data
     df = pd.read_csv(input_csv)
 
-    #Class Loading
-    metrics = Metrics()
-    config = Config()
 
     # 1. Parse Race_Time and extract components
     df['Race_Time'] = pd.to_datetime(df['Race_Time'], errors='coerce')
@@ -67,9 +68,3 @@ def clean_dataset(
     if output_csv:
         df.to_csv(output_csv, index=False)
     return df
-
-
-if __name__ == '__main__':
-    # Example usage
-    df_clean = clean_dataset('trainData.csv', 'trainData_clean.csv')
-    print("Cleaned data saved to trainData_clean.csv")

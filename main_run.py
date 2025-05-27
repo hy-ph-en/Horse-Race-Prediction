@@ -1,19 +1,24 @@
 import pandas as pd
+from Data_Processing.preprocessing import Preprocessing
+from Model.stack import model_run
+from Evaluation.evaluation import evaluate_model
+
 
 def run():
 
-    #Loading Data
-    data = pd.read_csv('testData.csv')
-
     #Preprocessing Data
-    data = preprocess_data(data)   
+    data = Preprocessing().check_and_preprocess()
 
     #Training Model
-    model = train_model(data)
+    model_components, train_data = model_run(data)
 
     #Evaluating Model
-    evaluate_model(model, data)
+    metrics = evaluate_model(model_components, train_data)
+    
+    return model_components, metrics
 
 
 if __name__ == "__main__":
-    run()
+    model_components, metrics = run()
+    print(metrics)
+    print(model_components)
