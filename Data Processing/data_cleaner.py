@@ -14,39 +14,56 @@ Usage:
 """
 import pandas as pd
 from metrics import Metrics
+from configuration import Config
 
 
-def clean_dataset(input_csv: str, output_csv: str = None) -> pd.DataFrame:
-    # Load raw data
+def clean_dataset(
+    input_csv: str,
+    output_csv: str = None
+) -> pd.DataFrame:
+    """
+    Load and clean the dataset with a universal missing-value strategy.
+
+    Parameters:
+    - input_csv: path to raw CSV file
+    - output_csv: optional path to write cleaned CSV
+
+    Returns:
+    - Cleaned pandas DataFrame
+    """
+
+    #Load Data
     df = pd.read_csv(input_csv)
-    # Create Metric Object
-    metrics = Metrics()
 
-    # --- 1. Date and time parsing ---
-    df['Race_Time'] = pd.to_datetime(df['Race_Time'])
-    df['year'] = df['Race_Time'].dt.year
-    df['month'] = df['Race_Time'].dt.month
+    #Class Loading
+    metrics = Metrics()
+    config = Config()
+
+    # 1. Parse Race_Time and extract components
+    df['Race_Time'] = pd.to_datetime(df['Race_Time'], errors='coerce')
+    df['year']      = df['Race_Time'].dt.year
+    df['month']     = df['Race_Time'].dt.month
     df['dayofweek'] = df['Race_Time'].dt.dayofweek
 
-    # --- 2. Metric unit conversion ---
+    # 2. Convert imperial units to metric
     df = metrics.convert_to_metric(df)
 
-    # --- 3. Missing value imputation ---
-    # Numeric columns: median impute
-    num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-    df[num_cols] = df[num_cols].fillna(df[num_cols].median())
-    # Categorical columns: fill with 'MISSING'
-    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
-    df[cat_cols] = df[cat_cols].fillna('MISSING')
+    # 3. Handle missing values universally
+    if config.missing_strategy == 'drop':
+        # Drop any row with at least one missing value
+        df = df.dropna()
+    else:
+        # Fill all missing values with a sentinel
+        df = df.fillna('MISSING')
 
-    # --- 4. Log-transform skewed numeric columns ---
+    # 4. Log-transform skewed numeric columns
     skew_cols = ['Prize', 'betfairSP', 'MarketOdds_PreviousRun', 'MarketOdds_2ndPreviousRun']
     for col in skew_cols:
-        if col in df.columns:
-            df[f'log_{col}'] = df[col].apply(lambda x: pd.np.log1p(x))
+        if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
+            df[f'log_{col}'] = np.log1p(df[col].astype(float))
             df.drop(columns=[col], inplace=True)
 
-    # --- 5. Final tidy output ---
+    # 5. Output
     if output_csv:
         df.to_csv(output_csv, index=False)
     return df
