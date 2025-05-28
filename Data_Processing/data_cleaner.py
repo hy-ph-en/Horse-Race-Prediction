@@ -13,7 +13,8 @@ Usage:
     df_clean = clean_dataset("trainData.csv")
 """
 import pandas as pd
-from metrics import Metrics
+import numpy as np
+from .metrics import Metrics
 from configuration import Config
 
 
@@ -33,8 +34,8 @@ def clean_dataset() -> pd.DataFrame:
     config = Config()
 
     #File Naming
-    input_csv = config.input_csv
-    output_csv = config.output_csv
+    input_csv = config.data_path
+    output_csv = config.output_path
 
     #Load Data
     df = pd.read_csv(input_csv)

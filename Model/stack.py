@@ -7,10 +7,10 @@ from sklearn.calibration import CalibratedClassifierCV
 from configuration import Config
 
 # import base model getters
-from Submodels.light_gmb import get_model as get_lgbm
-from Submodels.xgboost import get_model as get_xgb
-from Submodels.neuralnet import get_model as get_nn
-from Submodels.logistic_regression import get_model as get_lr
+from .Submodels.light_gmb import get_model as get_lgbm
+from .Submodels.xgboost import get_model as get_xgb
+from .Submodels.neuralnet import get_model as get_nn
+from .Submodels.logistic_regression import get_model as get_lr
 
 # meta-learner
 from xgboost import XGBClassifier
