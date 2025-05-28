@@ -5,26 +5,24 @@ class Config():
         #Paths to Data
         self.data_path = 'Data/trainData.csv'
         self.test_data_path = 'Data/testData.csv'
-        self.output_path = 'Data/trainData_clean.csv'
         
         #Config for Data Cleaning
-        self.missing_strategy = 'fill'
+        self.missing_strategy = 'drop'
 
         #Varry On Desired Training Time  
         self.data_incusion = 1
 
 
         'Can Change the Features Desired for Training'
-        #Feature Columns
+        #Feature Columns - Removed post-race variables: betfairSP, Position, pdsBeaten, NMFP
         self.feature_cols = [
             'Speed_PreviousRun_diff', 'Speed_PreviousRun_rank',
             'TrainerRating_diff', 'TrainerRating_rank',
             'JockeyRating_diff',  'JockeyRating_rank',
             'Age_diff', 'Age_rank', 'daysSinceLastRun_diff', 'daysSinceLastRun_rank',
             'SireRating_diff', 'SireRating_rank', 'DamsireRating_diff', 'DamsireRating_rank',
-            'meanRunners_diff', 'meanRunners_rank', 'betfairSP_diff', 'betfairSP_rank',
-            'Position_diff', 'Position_rank', 'pdsBeaten_diff', 'pdsBeaten_rank',
-            'NMFP_diff', 'NMFP_rank', 'MarketOdds_PreviousRun_diff', 'MarketOdds_PreviousRun_rank',
+            'meanRunners_diff', 'meanRunners_rank',
+            'MarketOdds_PreviousRun_diff', 'MarketOdds_PreviousRun_rank',
             'MarketOdds_2ndPreviousRun_diff', 'MarketOdds_2ndPreviousRun_rank'
         ]
 

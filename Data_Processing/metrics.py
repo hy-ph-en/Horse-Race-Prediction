@@ -36,9 +36,12 @@ class Metrics:
         - OddsRank: rank of betfairSP (or implied odds) within each Race_ID
         - IsFavourite: boolean flag for OddsRank == 1
         - Layoff_rank: rank of daysSinceLastRun within each Race_ID
+        
+        PLUS: Creates the _diff and _rank features expected by the configuration
         """
         df = df.copy()
-        # Speed previous run rank
+        
+        # Original features
         if 'Speed_PreviousRun_mps' in df.columns:
             df['SpeedPrev_rank'] = df.groupby('Race_ID')['Speed_PreviousRun_mps'] \
                                     .rank(ascending=False, method='dense')
@@ -51,8 +54,65 @@ class Metrics:
         if 'daysSinceLastRun' in df.columns:
             df['Layoff_rank'] = df.groupby('Race_ID')['daysSinceLastRun'] \
                                     .rank(ascending=False, method='dense')
+        
+        # NEW: Add the expected _diff and _rank features
+        df = self._add_expected_features(df)
+        
         return df
 
+    def _add_expected_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Creates the specific _diff and _rank features expected by the configuration.
+        _diff features: difference from race mean
+        _rank features: within-race ranking
+        """
+        # Define the base columns and their expected feature names
+        feature_mapping = {
+            'Speed_PreviousRun_mps': 'Speed_PreviousRun',
+            'TrainerRating': 'TrainerRating', 
+            'JockeyRating': 'JockeyRating',
+            'Age': 'Age',
+            'daysSinceLastRun': 'daysSinceLastRun',
+            'SireRating': 'SireRating',
+            'DamsireRating': 'DamsireRating',
+            'meanRunners': 'meanRunners',
+            'log_betfairSP': 'betfairSP',  # Use log version if available
+            'Position': 'Position',
+            'pdsBeaten': 'pdsBeaten',
+            'NMFP': 'NMFP',
+            'log_MarketOdds_PreviousRun': 'MarketOdds_PreviousRun',
+            'log_MarketOdds_2ndPreviousRun': 'MarketOdds_2ndPreviousRun'
+        }
+        
+        # Create _diff and _rank features for each available column
+        for source_col, feature_name in feature_mapping.items():
+            if source_col in df.columns:
+                # Create _diff feature (difference from race mean)
+                race_mean = df.groupby('Race_ID')[source_col].transform('mean')
+                df[f'{feature_name}_diff'] = df[source_col] - race_mean
+                
+                # Create _rank feature (within-race ranking)
+                # For most features, higher is better (ascending=False)
+                # For Position and pdsBeaten, lower is better (ascending=True)
+                if feature_name in ['Position', 'pdsBeaten']:
+                    df[f'{feature_name}_rank'] = df.groupby('Race_ID')[source_col].rank(ascending=True, method='dense')
+                else:
+                    df[f'{feature_name}_rank'] = df.groupby('Race_ID')[source_col].rank(ascending=False, method='dense')
+        
+        # Handle betfairSP if log version not available
+        if 'betfairSP' in df.columns and 'log_betfairSP' not in df.columns:
+            race_mean = df.groupby('Race_ID')['betfairSP'].transform('mean')
+            df['betfairSP_diff'] = df['betfairSP'] - race_mean
+            df['betfairSP_rank'] = df.groupby('Race_ID')['betfairSP'].rank(ascending=True, method='dense')  # Lower odds = better
+        
+        # Handle original MarketOdds columns if log versions not available
+        for odds_col in ['MarketOdds_PreviousRun', 'MarketOdds_2ndPreviousRun']:
+            if odds_col in df.columns and f'log_{odds_col}' not in df.columns:
+                race_mean = df.groupby('Race_ID')[odds_col].transform('mean')
+                df[f'{odds_col}_diff'] = df[odds_col] - race_mean
+                df[f'{odds_col}_rank'] = df.groupby('Race_ID')[odds_col].rank(ascending=True, method='dense')  # Lower odds = better
+        
+        return df
 
     def add_form_momentum(self, df: pd.DataFrame, window: int = 3) -> pd.DataFrame:
         """

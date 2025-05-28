@@ -21,4 +21,3 @@ def run():
 if __name__ == "__main__":
     model_components, metrics = run()
     print(metrics)
-    print(model_components)

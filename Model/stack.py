@@ -18,13 +18,22 @@ from xgboost import XGBClassifier
 
 def prepare_features(df, feature_cols):
     """
-    Impute and scale features.
+    Impute and scale features while preserving feature names.
     """
+    # Extract features as DataFrame to preserve names
+    feature_df = df[feature_cols].copy()
+    
     imputer = SimpleImputer(strategy='median')
     scaler  = StandardScaler()
-    X = imputer.fit_transform(df[feature_cols])
-    X = scaler.fit_transform(X)
-    return X, imputer, scaler
+    
+    # Fit and transform while preserving structure
+    X_imputed = imputer.fit_transform(feature_df)
+    X_scaled = scaler.fit_transform(X_imputed)
+    
+    # Convert back to DataFrame with original column names
+    X_df = pd.DataFrame(X_scaled, columns=feature_cols, index=feature_df.index)
+    
+    return X_df, imputer, scaler
 
 
 def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_col):
@@ -34,8 +43,8 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     3) Outputs final test-set probabilities
     4) Returns trained model components for evaluation
     """
-    # Prepare feature matrix
-    X_all, imputer, scaler = prepare_features(train_df, feature_cols)
+    # Prepare feature matrix (returns DataFrame now)
+    X_all_df, imputer, scaler = prepare_features(train_df, feature_cols)
     y_all = train_df[target_col].values
 
     # Placeholder for OOF and test preds
@@ -45,34 +54,43 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     base_getters = [get_lgbm, get_xgb, get_nn, get_lr]
     trained_base_models = []
 
+    # Prepare test features once (returns DataFrame)
+    X_test_df, _, _ = prepare_features(test_df, feature_cols)
+
     # GroupKFold by races
     gkf = GroupKFold(n_splits=5)
-    for fold, (train_idx, val_idx) in enumerate(gkf.split(X_all, y_all, groups=train_df[group_col])):
-        X_tr, y_tr = X_all[train_idx], y_all[train_idx]
-        X_val = X_all[val_idx]
+    for fold, (train_idx, val_idx) in enumerate(gkf.split(X_all_df, y_all, groups=train_df[group_col])):
+        X_tr_df = X_all_df.iloc[train_idx]
+        X_val_df = X_all_df.iloc[val_idx]
+        y_tr = y_all[train_idx]
         
         fold_models = []
         for m_idx, get_model in enumerate(base_getters):
             model = get_model()
-            model.fit(X_tr, y_tr)
+            model.fit(X_tr_df, y_tr)
             fold_models.append(model)
             # predict_proba class 1 (win)
-            oof_preds[val_idx, m_idx] = model.predict_proba(X_val)[:, 1]
+            oof_preds[val_idx, m_idx] = model.predict_proba(X_val_df)[:, 1]
             # accumulate test preds
-            X_test, _, _ = prepare_features(test_df, feature_cols)
-            test_feats[:, m_idx] += model.predict_proba(X_test)[:, 1] / gkf.n_splits
+            test_feats[:, m_idx] += model.predict_proba(X_test_df)[:, 1] / gkf.n_splits
         
         trained_base_models.append(fold_models)
 
     # Train meta-model on OOF
     meta_model = XGBClassifier(
-        n_estimators=200,
-        learning_rate=0.05,
-        max_depth=3,
+        n_estimators=50,  # Reduced from 200
+        learning_rate=0.1,  # Increased from 0.05
+        max_depth=3,  # Keep shallow for meta-model
+        min_child_weight=3,  # Added regularization
+        subsample=0.8,  # Added subsampling
+        colsample_bytree=0.8,  # Added column subsampling
+        reg_alpha=0.1,  # L1 regularization
+        reg_lambda=0.1,  # L2 regularization
         objective='binary:logistic',
         use_label_encoder=False,
         eval_metric='logloss',
-        random_state=42
+        random_state=42,
+        verbosity=0  # Reduce warnings
     )
     # Optionally calibrate
     calibrator = CalibratedClassifierCV(meta_model, method='sigmoid', cv=3)
@@ -132,6 +150,9 @@ def model_run(data=None):
         target_col='win',
         group_col='Race_ID'
     )
+
+    #Sort by Race_ID
+    submission.sort_values('Race_ID', inplace=True)
     
     submission.to_csv('submission.csv', index=False)
     

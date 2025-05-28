@@ -18,7 +18,7 @@ from .metrics import Metrics
 from configuration import Config
 
 
-def clean_dataset() -> pd.DataFrame:
+def clean_dataset(file_path) -> pd.DataFrame:
     """
     Load and clean the dataset with a universal missing-value strategy.
 
@@ -34,8 +34,8 @@ def clean_dataset() -> pd.DataFrame:
     config = Config()
 
     #File Naming
-    input_csv = config.data_path
-    output_csv = config.output_path
+    input_csv = file_path
+    output_csv = file_path.replace('.csv', '_clean.csv')
 
     #Load Data
     df = pd.read_csv(input_csv)
