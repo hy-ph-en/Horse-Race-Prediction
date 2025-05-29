@@ -150,11 +150,33 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     # Test different scale factors to see the impact
     scale_factors = [1, 2, 4, 6, 8, 10]
     
+    # Get true labels for Brier score calculation (if available)
+    if 'win' in train_df.columns:
+        # Use training data to approximate impact
+        train_preds = meta_model.predict_proba(oof_preds)[:, 1]
+        train_df_temp = train_df.copy()
+        train_df_temp['pred_raw'] = train_preds
+        y_true = train_df['win'].values
+        
+        print(f"Scale Factor Impact Analysis (using training data approximation):")
+        for scale in scale_factors:
+            train_probs = train_df_temp.groupby(group_col)['pred_raw'].transform(
+                lambda x: np.exp(x * scale) / np.exp(x * scale).sum()
+            )
+            # Calculate Brier score
+            brier = np.mean((train_probs - y_true) ** 2)
+            log_loss_val = -np.mean(y_true * np.log(np.clip(train_probs, 1e-15, 1-1e-15)) + 
+                                  (1 - y_true) * np.log(np.clip(1 - train_probs, 1e-15, 1-1e-15)))
+            
+            print(f"Scale {scale}: Range {train_probs.min():.4f}-{train_probs.max():.4f}, "
+                  f">0.5: {np.sum(train_probs > 0.5)}, Brier: {brier:.4f}, LogLoss: {log_loss_val:.4f}")
+    
+    # Test on actual test data
     for scale in scale_factors:
         test_probs = test_df.groupby(group_col)['pred_raw'].transform(
             lambda x: np.exp(x * scale) / np.exp(x * scale).sum()
         )
-        print(f"Scale {scale}: Range {test_probs.min():.4f} to {test_probs.max():.4f}, "
+        print(f"Test Scale {scale}: Range {test_probs.min():.4f} to {test_probs.max():.4f}, "
               f"Mean {test_probs.mean():.4f}, >0.5: {np.sum(test_probs > 0.5)}")
     
     # Look at a specific race to understand the dynamics
@@ -169,9 +191,9 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         race_probs = race_softmax / race_softmax.sum()
         print(f"Scale {scale}: {race_probs} (max: {race_probs.max():.4f})")
     
-    # Use moderate softmax with raw predictions for better Log Loss balance
+    # Use optimal scale factor 6 based on diagnostic analysis
     test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-        lambda x: np.exp(x * 4) / np.exp(x * 4).sum()  # Scale factor 4: moderate with raw predictions for balance
+        lambda x: np.exp(x * 6) / np.exp(x * 6).sum()  # Scale factor 6: optimal balance from diagnostics
     )
     
     print(f"After normalization:")

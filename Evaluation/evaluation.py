@@ -18,14 +18,24 @@ def evaluate_model(model_components, train_data):
     
     # Handle case where calibrator might be None
     if model_components['calibrator'] is not None:
-        y_pred_proba = model_components['calibrator'].predict_proba(model_components['oof_predictions'])[:, 1]
+        y_pred_proba_raw = model_components['calibrator'].predict_proba(model_components['oof_predictions'])[:, 1]
     else:
         # Use meta_model directly on oof_predictions or just use raw oof_predictions
         if 'meta_model' in model_components and model_components['meta_model'] is not None:
-            y_pred_proba = model_components['meta_model'].predict_proba(model_components['oof_predictions'])[:, 1]
+            y_pred_proba_raw = model_components['meta_model'].predict_proba(model_components['oof_predictions'])[:, 1]
         else:
             # Fallback: use the mean of oof_predictions as a simple ensemble
-            y_pred_proba = model_components['oof_predictions'].mean(axis=1)
+            y_pred_proba_raw = model_components['oof_predictions'].mean(axis=1)
+    
+    # Apply the same softmax transformation used in production
+    # Create temporary dataframe for groupby transformation
+    temp_df = train_data[['Race_ID']].copy()
+    temp_df['pred_raw'] = y_pred_proba_raw
+    
+    # Apply softmax normalization by race (same as production)
+    y_pred_proba = temp_df.groupby('Race_ID')['pred_raw'].transform(
+        lambda x: np.exp(x * 6) / np.exp(x * 6).sum()  # Same scale factor as production
+    ).values
     
     y_pred_binary = (y_pred_proba > 0.6).astype(int)
     
