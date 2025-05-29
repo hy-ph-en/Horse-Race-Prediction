@@ -59,7 +59,9 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
 
     # GroupKFold by races
     gkf = GroupKFold(n_splits=5)
-
+    print(f"Training base models with {gkf.n_splits} folds...")
+    print(f"Class distribution: {np.bincount(y_all)} (0: no win, 1: win)")
+    print(f"Positive class ratio: {np.mean(y_all):.3f}")
     
     for fold, (train_idx, val_idx) in enumerate(gkf.split(X_all_df, y_all, groups=train_df[group_col])):
         X_tr_df = X_all_df.iloc[train_idx]
@@ -67,6 +69,8 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         y_tr = y_all[train_idx]
         y_val = y_all[val_idx]
         
+        print(f"Fold {fold + 1}: Train samples: {len(y_tr)}, Val samples: {len(y_val)}")
+        print(f"  Train win rate: {np.mean(y_tr):.3f}, Val win rate: {np.mean(y_val):.3f}")
         
         fold_models = []
         for m_idx, get_model in enumerate(base_getters):
@@ -76,14 +80,34 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
             # predict_proba class 1 (win)
             val_preds = model.predict_proba(X_val_df)[:, 1]
             oof_preds[val_idx, m_idx] = val_preds
-            print(f"    Model {m_idx} - Val pred range: {val_preds.min():.3f} to {val_preds.max():.3f}")
+            print(f"    Model {m_idx} - Val pred range: {val_preds.min():.3f} to {val_preds.max():.3f}, Mean: {val_preds.mean():.3f}")
+            print(f"    Model {m_idx} - Preds >0.5: {np.sum(val_preds > 0.5)}/{len(val_preds)} ({100*np.sum(val_preds > 0.5)/len(val_preds):.1f}%)")
             # accumulate test preds
             test_feats[:, m_idx] += model.predict_proba(X_test_df)[:, 1] / gkf.n_splits
         
         trained_base_models.append(fold_models)
 
     # Train meta-model on OOF
-    print(f"\nTraining meta-model...")
+    print(f"\n=== BASE MODEL ANALYSIS ===")
+    print(f"OOF predictions shape: {oof_preds.shape}")
+    model_names = ['LightGBM', 'XGBoost', 'NeuralNet', 'LogisticReg']
+    
+    for i in range(oof_preds.shape[1]):
+        base_preds = oof_preds[:, i]
+        print(f"{model_names[i]}:")
+        print(f"  Range: {base_preds.min():.3f} to {base_preds.max():.3f}")
+        print(f"  Mean: {base_preds.mean():.3f}")
+        print(f"  Preds >0.5: {np.sum(base_preds > 0.5)}/{len(base_preds)} ({100*np.sum(base_preds > 0.5)/len(base_preds):.1f}%)")
+        print(f"  Preds >0.2: {np.sum(base_preds > 0.2)}/{len(base_preds)} ({100*np.sum(base_preds > 0.2)/len(base_preds):.1f}%)")
+    
+    # Simple ensemble for comparison
+    simple_avg = oof_preds.mean(axis=1)
+    print(f"\nSimple Average Ensemble:")
+    print(f"  Range: {simple_avg.min():.3f} to {simple_avg.max():.3f}")
+    print(f"  Mean: {simple_avg.mean():.3f}")
+    print(f"  Preds >0.5: {np.sum(simple_avg > 0.5)}/{len(simple_avg)} ({100*np.sum(simple_avg > 0.5)/len(simple_avg):.1f}%)")
+    
+    print(f"\n=== TRAINING META-MODEL ===")
     
     meta_model = XGBClassifier(
         n_estimators=100,  # Increased from 50
@@ -94,7 +118,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         colsample_bytree=0.8,  
         reg_alpha=0.01,  # Reduced regularization
         reg_lambda=0.01,  # Reduced regularization
-        scale_pos_weight=8.5,  # Handle class imbalance
+        scale_pos_weight=4.0,  # Reduced from 8.5 - less aggressive class balancing
         objective='binary:logistic',
         use_label_encoder=False,
         eval_metric='logloss',
@@ -102,12 +126,16 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         verbosity=0  
     )
     
-    # Use isotonic calibration for better balance between confidence and accuracy
+    # Balanced approach: calibration + moderate softmax for optimal Log Loss/Brier Score
     calibrator = CalibratedClassifierCV(meta_model, method='isotonic', cv=3)
     calibrator.fit(oof_preds, y_all)
     
-    # Get calibrated predictions
+    # Get calibrated predictions for better probabilistic accuracy
     final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
+    
+    # Optional: Use raw predictions (commented out for better calibration)
+    # meta_model.fit(oof_preds, y_all)
+    # final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
     
     print(f"Calibrated meta-model predictions:")
     print(f"Range: {final_test_raw.min():.4f} to {final_test_raw.max():.4f}")
@@ -116,9 +144,9 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     # Final predictions
     test_df['pred_raw'] = final_test_raw
     
-    # Option 2: Softmax-like transformation optimized for balance between predictions and probabilistic accuracy
+    # Balanced softmax: more aggressive scale factor to overcome conservative calibration
     test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-        lambda x: np.exp(x * 4) / np.exp(x * 4).sum()  # Scale factor 4: balance between predictions and calibration
+        lambda x: np.exp(x * 6) / np.exp(x * 6).sum()  # Scale factor 6: more aggressive to generate some winner predictions
     )
     
     print(f"After normalization:")

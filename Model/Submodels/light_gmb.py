@@ -17,7 +17,7 @@ def get_model(**kwargs):
         'colsample_bytree': 0.8,  
         'reg_alpha': 0.01,  # Reduced regularization
         'reg_lambda': 0.01,  # Reduced regularization
-        'scale_pos_weight': 8.5,  # Handle class imbalance (approximate ratio of negative to positive)
+        'scale_pos_weight': 4.0,  # Reduced from 8.5 - less aggressive class balancing
         'objective': 'binary',
         'metric': 'binary_logloss',
         'boosting_type': 'gbdt',

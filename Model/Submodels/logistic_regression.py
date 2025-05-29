@@ -10,7 +10,7 @@ def get_model(**kwargs):
         'C': 0.1,
         'l1_ratio': 0.5,
         'solver': 'saga',
-        'class_weight': 'balanced',
+        'class_weight': {0: 1, 1: 4},  # Manual class weight - less aggressive than 'balanced'
         'max_iter': 2000,
         'random_state': 42,
     }

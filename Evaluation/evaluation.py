@@ -27,7 +27,7 @@ def evaluate_model(model_components, train_data):
             # Fallback: use the mean of oof_predictions as a simple ensemble
             y_pred_proba = model_components['oof_predictions'].mean(axis=1)
     
-    y_pred_binary = (y_pred_proba > 0.5).astype(int)
+    y_pred_binary = (y_pred_proba > 0.6).astype(int)
     
     # Calculate metrics
     metrics = {
@@ -42,6 +42,7 @@ def evaluate_model(model_components, train_data):
     print(f"Predicted probability range: {y_pred_proba.min():.4f} to {y_pred_proba.max():.4f}")
     print(f"Mean predicted probability: {y_pred_proba.mean():.4f}")
     print(f"Actual win rate: {y_true.mean():.4f}")
+    print(f"Predictions > 0.6: {(y_pred_proba > 0.6).sum()} out of {len(y_pred_proba)}")
     print(f"Predictions > 0.5: {(y_pred_proba > 0.5).sum()} out of {len(y_pred_proba)}")
     print(f"Predictions > 0.1: {(y_pred_proba > 0.1).sum()} out of {len(y_pred_proba)}")
     
@@ -62,12 +63,12 @@ def evaluate_model(model_components, train_data):
     print("\n=== MODEL EVALUATION METRICS ===")
     print(f"ROC AUC: {metrics['roc_auc']:.4f}")
     print(f"Log Loss: {metrics['log_loss']:.4f}")
-    print(f"Accuracy (0.5 threshold): {metrics['accuracy']:.4f}")
+    print(f"Accuracy (0.6 threshold): {metrics['accuracy']:.4f}")
     print(f"Brier Score: {metrics['brier_score']:.4f}")
-    print("\nClassification Report (0.5 threshold):")
-    print(classification_report(y_true, y_pred_binary))
+    print("\nClassification Report (0.6 threshold):")
+    print(classification_report(y_true, y_pred_binary, zero_division=0))
     print("\nClassification Report (optimal threshold):")
-    print(classification_report(y_true, y_pred_optimal))
+    print(classification_report(y_true, y_pred_optimal, zero_division=0))
     
     # Add optimal threshold metrics to return
     metrics['optimal_threshold'] = optimal_threshold
@@ -103,9 +104,11 @@ def evaluate_model_simple(y_true, y_pred_proba, y_pred_binary=None):
     print(f"Predicted probability range: {y_pred_proba.min():.4f} to {y_pred_proba.max():.4f}")
     print(f"Mean predicted probability: {y_pred_proba.mean():.4f}")
     print(f"Actual win rate: {y_true.mean():.4f}")
+    print(f"Predictions > 0.6: {(y_pred_proba > 0.6).sum()} out of {len(y_pred_proba)}")
     print(f"Predictions > 0.5: {(y_pred_proba > 0.5).sum()} out of {len(y_pred_proba)}")
+    print(f"Predictions > 0.1: {(y_pred_proba > 0.1).sum()} out of {len(y_pred_proba)}")
     
-    # Find optimal threshold
+    # Find optimal threshold using precision-recall curve
     precision, recall, thresholds = precision_recall_curve(y_true, y_pred_proba)
     f1_scores = 2 * (precision * recall) / (precision + recall + 1e-10)
     optimal_idx = np.argmax(f1_scores)
@@ -119,7 +122,7 @@ def evaluate_model_simple(y_true, y_pred_proba, y_pred_binary=None):
     print(f"Accuracy: {metrics['accuracy']:.4f}")
     print(f"Brier Score: {metrics['brier_score']:.4f}")
     print("\nClassification Report:")
-    print(classification_report(y_true, y_pred_binary))
+    print(classification_report(y_true, y_pred_binary, zero_division=0))
     
     metrics['optimal_threshold'] = optimal_threshold
     
