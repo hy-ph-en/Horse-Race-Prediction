@@ -102,27 +102,23 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         verbosity=0  
     )
     
-    # Try without calibration first - calibration might be making model too conservative
-    meta_model.fit(oof_preds, y_all)
+    # Use isotonic calibration for better balance between confidence and accuracy
+    calibrator = CalibratedClassifierCV(meta_model, method='isotonic', cv=3)
+    calibrator.fit(oof_preds, y_all)
     
-    # Get raw meta-model predictions
-    final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
+    # Get calibrated predictions
+    final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
     
-    print(f"Raw meta-model predictions:")
+    print(f"Calibrated meta-model predictions:")
     print(f"Range: {final_test_raw.min():.4f} to {final_test_raw.max():.4f}")
     print(f"Mean: {final_test_raw.mean():.4f}")
-    
-    # Optional: Use calibration if raw predictions are still too conservative
-    # calibrator = CalibratedClassifierCV(meta_model, method='sigmoid', cv=3)
-    # calibrator.fit(oof_preds, y_all)
-    # final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
     
     # Final predictions
     test_df['pred_raw'] = final_test_raw
     
-    # Option 2: Softmax-like transformation for better probability distribution
+    # Option 2: Softmax-like transformation optimized for balance between predictions and probabilistic accuracy
     test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-        lambda x: np.exp(x * 8) / np.exp(x * 8).sum()  # Increased scale factor to 8 for much more aggressive differentiation
+        lambda x: np.exp(x * 4) / np.exp(x * 4).sum()  # Scale factor 4: balance between predictions and calibration
     )
     
     print(f"After normalization:")
@@ -137,7 +133,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
 
     # Prepare model components for return
     model_components = {
-        'calibrator': None,
+        'calibrator': calibrator,
         'meta_model': meta_model,
         'trained_base_models': trained_base_models,
         'imputer': imputer,
