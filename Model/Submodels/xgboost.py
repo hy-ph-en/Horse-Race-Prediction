@@ -5,16 +5,17 @@ def get_model(**kwargs):
     Returns an XGBoost classifier.
     Pass hyperparameters via kwargs.
     """
-    # Improved hyperparameters for horse racing data
+    # Improved hyperparameters for horse racing data with class imbalance handling
     params = {
-        'n_estimators': 100,  # Reduced from 500
-        'learning_rate': 0.1,  # Increased from 0.05 for faster convergence
-        'max_depth': 5,  # Reduced from 6 to prevent overfitting
-        'min_child_weight': 3,  # Increased for regularization
+        'n_estimators': 200,  # Increased for better learning
+        'learning_rate': 0.05,  # Reduced for more careful learning
+        'max_depth': 7,  # Increased for better pattern recognition
+        'min_child_weight': 1,  # Reduced for more granular splits
         'subsample': 0.8,  # Added row subsampling
         'colsample_bytree': 0.8,  # Added column subsampling
-        'reg_alpha': 0.1,  # L1 regularization
-        'reg_lambda': 0.1,  # L2 regularization
+        'reg_alpha': 0.01,  # Reduced regularization
+        'reg_lambda': 0.01,  # Reduced regularization
+        'scale_pos_weight': 8.5,  # Handle class imbalance (approximate ratio of negative to positive)
         'use_label_encoder': False,
         'eval_metric': 'logloss',
         'random_state': 42,

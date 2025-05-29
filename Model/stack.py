@@ -59,10 +59,14 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
 
     # GroupKFold by races
     gkf = GroupKFold(n_splits=5)
+
+    
     for fold, (train_idx, val_idx) in enumerate(gkf.split(X_all_df, y_all, groups=train_df[group_col])):
         X_tr_df = X_all_df.iloc[train_idx]
         X_val_df = X_all_df.iloc[val_idx]
         y_tr = y_all[train_idx]
+        y_val = y_all[val_idx]
+        
         
         fold_models = []
         for m_idx, get_model in enumerate(base_getters):
@@ -70,42 +74,70 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
             model.fit(X_tr_df, y_tr)
             fold_models.append(model)
             # predict_proba class 1 (win)
-            oof_preds[val_idx, m_idx] = model.predict_proba(X_val_df)[:, 1]
+            val_preds = model.predict_proba(X_val_df)[:, 1]
+            oof_preds[val_idx, m_idx] = val_preds
+            print(f"    Model {m_idx} - Val pred range: {val_preds.min():.3f} to {val_preds.max():.3f}")
             # accumulate test preds
             test_feats[:, m_idx] += model.predict_proba(X_test_df)[:, 1] / gkf.n_splits
         
         trained_base_models.append(fold_models)
 
     # Train meta-model on OOF
+    print(f"\nTraining meta-model...")
+    
     meta_model = XGBClassifier(
-        n_estimators=50,  # Reduced from 200
-        learning_rate=0.1,  # Increased from 0.05
-        max_depth=3,  # Keep shallow for meta-model
-        min_child_weight=3,  # Added regularization
-        subsample=0.8,  # Added subsampling
-        colsample_bytree=0.8,  # Added column subsampling
-        reg_alpha=0.1,  # L1 regularization
-        reg_lambda=0.1,  # L2 regularization
+        n_estimators=100,  # Increased from 50
+        learning_rate = 0.05,  # Reduced for more careful learning
+        max_depth=5,  # Increased depth for better pattern recognition
+        min_child_weight=1,  # Reduced for more granular splits
+        subsample=0.8,  
+        colsample_bytree=0.8,  
+        reg_alpha=0.01,  # Reduced regularization
+        reg_lambda=0.01,  # Reduced regularization
+        scale_pos_weight=8.5,  # Handle class imbalance
         objective='binary:logistic',
         use_label_encoder=False,
         eval_metric='logloss',
         random_state=42,
-        verbosity=0  # Reduce warnings
+        verbosity=0  
     )
-    # Optionally calibrate
-    calibrator = CalibratedClassifierCV(meta_model, method='sigmoid', cv=3)
-    calibrator.fit(oof_preds, y_all)
-
+    
+    # Try without calibration first - calibration might be making model too conservative
+    meta_model.fit(oof_preds, y_all)
+    
+    # Get raw meta-model predictions
+    final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
+    
+    print(f"Raw meta-model predictions:")
+    print(f"Range: {final_test_raw.min():.4f} to {final_test_raw.max():.4f}")
+    print(f"Mean: {final_test_raw.mean():.4f}")
+    
+    # Optional: Use calibration if raw predictions are still too conservative
+    # calibrator = CalibratedClassifierCV(meta_model, method='sigmoid', cv=3)
+    # calibrator.fit(oof_preds, y_all)
+    # final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
+    
     # Final predictions
-    final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
-
-    # Normalize per race
     test_df['pred_raw'] = final_test_raw
-    test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(lambda x: x / x.sum())
+    
+    # Option 2: Softmax-like transformation for better probability distribution
+    test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
+        lambda x: np.exp(x * 8) / np.exp(x * 8).sum()  # Increased scale factor to 8 for much more aggressive differentiation
+    )
+    
+    print(f"After normalization:")
+    print(f"Final prediction range: {test_df['Predicted_Probability'].min():.4f} to {test_df['Predicted_Probability'].max():.4f}")
+    print(f"Final prediction mean: {test_df['Predicted_Probability'].mean():.4f}")
+    
+    # Option 1: Weighted normalization (preserves more original signal) - now commented out
+    # epsilon = 1e-8
+    # test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
+    #     lambda x: (x + epsilon) / (x.sum() + len(x) * epsilon)
+    # )
 
     # Prepare model components for return
     model_components = {
-        'calibrator': calibrator,
+        'calibrator': None,
         'meta_model': meta_model,
         'trained_base_models': trained_base_models,
         'imputer': imputer,
@@ -152,7 +184,7 @@ def model_run(data=None):
     )
 
     #Sort by Race_ID
-    submission.sort_values('Race_ID', inplace=True)
+    submission = submission.sort_values('Race_ID').copy()
     
     submission.to_csv('submission.csv', index=False)
     

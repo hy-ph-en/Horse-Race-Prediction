@@ -6,9 +6,12 @@ def get_model(**kwargs):
     Pass hyperparameters via kwargs.
     """
     params = {
-        'penalty': 'l2',
-        'C': 1.0,
-        'solver': 'liblinear',
+        'penalty': 'elasticnet',
+        'C': 0.1,
+        'l1_ratio': 0.5,
+        'solver': 'saga',
+        'class_weight': 'balanced',
+        'max_iter': 2000,
         'random_state': 42,
     }
     params.update(kwargs)
