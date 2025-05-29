@@ -126,27 +126,52 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         verbosity=0  
     )
     
-    # Balanced approach: calibration + moderate softmax for optimal Log Loss/Brier Score
-    calibrator = CalibratedClassifierCV(meta_model, method='isotonic', cv=3)
-    calibrator.fit(oof_preds, y_all)
+    # Fit the meta_model on out-of-fold predictions
+    meta_model.fit(oof_preds, y_all)
     
-    # Get calibrated predictions for better probabilistic accuracy
-    final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
+    # Alternative: Use raw predictions if calibration is still too conservative
+    # calibrator = CalibratedClassifierCV(meta_model, method='isotonic', cv=3)
+    # calibrator.fit(oof_preds, y_all)
+    # final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
     
-    # Optional: Use raw predictions (commented out for better calibration)
-    # meta_model.fit(oof_preds, y_all)
-    # final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
+    # Go back to raw predictions that we know work
+    final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
     
-    print(f"Calibrated meta-model predictions:")
+    print(f"Raw meta-model predictions:")
     print(f"Range: {final_test_raw.min():.4f} to {final_test_raw.max():.4f}")
     print(f"Mean: {final_test_raw.mean():.4f}")
     
     # Final predictions
     test_df['pred_raw'] = final_test_raw
     
-    # Balanced softmax: more aggressive scale factor to overcome conservative calibration
+    # Add detailed diagnostics to understand softmax behavior
+    print(f"\n=== SOFTMAX INVESTIGATION ===")
+    
+    # Test different scale factors to see the impact
+    scale_factors = [1, 2, 4, 6, 8, 10]
+    
+    for scale in scale_factors:
+        test_probs = test_df.groupby(group_col)['pred_raw'].transform(
+            lambda x: np.exp(x * scale) / np.exp(x * scale).sum()
+        )
+        print(f"Scale {scale}: Range {test_probs.min():.4f} to {test_probs.max():.4f}, "
+              f"Mean {test_probs.mean():.4f}, >0.5: {np.sum(test_probs > 0.5)}")
+    
+    # Look at a specific race to understand the dynamics
+    first_race = test_df[test_df[group_col] == test_df[group_col].iloc[0]]
+    print(f"\nExample race analysis (Race {first_race[group_col].iloc[0]}):")
+    print(f"Raw predictions: {first_race['pred_raw'].values}")
+    print(f"Raw range: {first_race['pred_raw'].min():.4f} to {first_race['pred_raw'].max():.4f}")
+    print(f"Raw std: {first_race['pred_raw'].std():.4f}")
+    
+    for scale in [1, 4, 8]:
+        race_softmax = np.exp(first_race['pred_raw'].values * scale)
+        race_probs = race_softmax / race_softmax.sum()
+        print(f"Scale {scale}: {race_probs} (max: {race_probs.max():.4f})")
+    
+    # Use moderate softmax with raw predictions for better Log Loss balance
     test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-        lambda x: np.exp(x * 6) / np.exp(x * 6).sum()  # Scale factor 6: more aggressive to generate some winner predictions
+        lambda x: np.exp(x * 4) / np.exp(x * 4).sum()  # Scale factor 4: moderate with raw predictions for balance
     )
     
     print(f"After normalization:")
@@ -161,7 +186,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
 
     # Prepare model components for return
     model_components = {
-        'calibrator': calibrator,
+        'calibrator': None,
         'meta_model': meta_model,
         'trained_base_models': trained_base_models,
         'imputer': imputer,
