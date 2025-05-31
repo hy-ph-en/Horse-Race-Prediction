@@ -168,7 +168,7 @@ The system achieves:
 - **Log-Loss**: ~0.29
 - **ROC-AUC**: ~0.77
 - **Brier**: ~0.0846
-- **Accuracy for Winner Prediction**: ~60%
+- **Accuracy for Winner Prediction**: ~65%
 
 *Performance varies based on data quality and racing conditions*
 
