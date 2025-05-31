@@ -220,7 +220,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📧 Contact
 
-For questions about the horse racing prediction system, please open an issue or contact the development team.
+For questions about the horse racing prediction system, please open an issue or contact the me
 
 ---
 
