@@ -15,6 +15,9 @@ from .Submodels.logistic_regression import get_model as get_lr
 # meta-learner
 from xgboost import XGBClassifier
 
+# Import diagnostics
+from Evaluation.diagnostics import run_detailed_diagnostics
+
 
 def prepare_features(df, feature_cols):
     """
@@ -35,7 +38,6 @@ def prepare_features(df, feature_cols):
     
     return X_df, imputer, scaler
 
-
 def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_col):
     """
     1) Trains base models with out-of-fold predictions
@@ -43,6 +45,9 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     3) Outputs final test-set probabilities
     4) Returns trained model components for evaluation
     """
+    # Load configuration
+    config = Config()
+    
     # Prepare feature matrix (returns DataFrame now)
     X_all_df, imputer, scaler = prepare_features(train_df, feature_cols)
     y_all = train_df[target_col].values
@@ -109,6 +114,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     
     print(f"\n=== TRAINING META-MODEL ===")
     
+    # Initialize meta-model
     meta_model = XGBClassifier(
         n_estimators=100,  # Increased from 50
         learning_rate = 0.05,  # Reduced for more careful learning
@@ -129,86 +135,54 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     # Fit the meta_model on out-of-fold predictions
     meta_model.fit(oof_preds, y_all)
     
-    # Alternative: Use raw predictions if calibration is still too conservative
-    # calibrator = CalibratedClassifierCV(meta_model, method='isotonic', cv=3)
-    # calibrator.fit(oof_preds, y_all)
-    # final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
+    # Configurable calibration - use config settings
+    calibrator = None
+    if config.use_meta_calibration:
+        print(f"Applying {config.calibration_method} calibration with {config.calibration_cv_folds} CV folds...")
+        calibrator = CalibratedClassifierCV(
+            meta_model, 
+            method=config.calibration_method, 
+            cv=config.calibration_cv_folds
+        )
+        calibrator.fit(oof_preds, y_all)
+        final_test_raw = calibrator.predict_proba(test_feats)[:, 1]
+        print(f"Calibrated meta-model predictions:")
+    else:
+        # Use raw predictions (current approach)
+        final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
+        print(f"Raw meta-model predictions:")
     
-    # Go back to raw predictions that we know work
-    final_test_raw = meta_model.predict_proba(test_feats)[:, 1]
-    
-    print(f"Raw meta-model predictions:")
     print(f"Range: {final_test_raw.min():.4f} to {final_test_raw.max():.4f}")
     print(f"Mean: {final_test_raw.mean():.4f}")
     
     # Final predictions
     test_df['pred_raw'] = final_test_raw
     
-    # Add detailed diagnostics to understand softmax behavior
-    print(f"\n=== SOFTMAX INVESTIGATION ===")
+    # Run detailed diagnostics if configured
+    if config.show_detailed_diagnostics:
+        run_detailed_diagnostics(train_df, test_df, meta_model, oof_preds, group_col)
     
-    # Test different scale factors to see the impact
-    scale_factors = [1, 2, 4, 6, 8, 10]
-    
-    # Get true labels for Brier score calculation (if available)
-    if 'win' in train_df.columns:
-        # Use training data to approximate impact
-        train_preds = meta_model.predict_proba(oof_preds)[:, 1]
-        train_df_temp = train_df.copy()
-        train_df_temp['pred_raw'] = train_preds
-        y_true = train_df['win'].values
-        
-        print(f"Scale Factor Impact Analysis (using training data approximation):")
-        for scale in scale_factors:
-            train_probs = train_df_temp.groupby(group_col)['pred_raw'].transform(
-                lambda x: np.exp(x * scale) / np.exp(x * scale).sum()
-            )
-            # Calculate Brier score
-            brier = np.mean((train_probs - y_true) ** 2)
-            log_loss_val = -np.mean(y_true * np.log(np.clip(train_probs, 1e-15, 1-1e-15)) + 
-                                  (1 - y_true) * np.log(np.clip(1 - train_probs, 1e-15, 1-1e-15)))
-            
-            print(f"Scale {scale}: Range {train_probs.min():.4f}-{train_probs.max():.4f}, "
-                  f">0.5: {np.sum(train_probs > 0.5)}, Brier: {brier:.4f}, LogLoss: {log_loss_val:.4f}")
-    
-    # Test on actual test data
-    for scale in scale_factors:
-        test_probs = test_df.groupby(group_col)['pred_raw'].transform(
-            lambda x: np.exp(x * scale) / np.exp(x * scale).sum()
+    # Use configurable scale factor for final predictions
+    if config.use_alternative_scaling:
+        # Option: Weighted normalization (preserves more original signal)
+        print(f"\nUsing alternative weighted normalization with epsilon={config.epsilon_scaling}")
+        test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
+            lambda x: (x + config.epsilon_scaling) / (x.sum() + len(x) * config.epsilon_scaling)
         )
-        print(f"Test Scale {scale}: Range {test_probs.min():.4f} to {test_probs.max():.4f}, "
-              f"Mean {test_probs.mean():.4f}, >0.5: {np.sum(test_probs > 0.5)}")
-    
-    # Look at a specific race to understand the dynamics
-    first_race = test_df[test_df[group_col] == test_df[group_col].iloc[0]]
-    print(f"\nExample race analysis (Race {first_race[group_col].iloc[0]}):")
-    print(f"Raw predictions: {first_race['pred_raw'].values}")
-    print(f"Raw range: {first_race['pred_raw'].min():.4f} to {first_race['pred_raw'].max():.4f}")
-    print(f"Raw std: {first_race['pred_raw'].std():.4f}")
-    
-    for scale in [1, 4, 8]:
-        race_softmax = np.exp(first_race['pred_raw'].values * scale)
-        race_probs = race_softmax / race_softmax.sum()
-        print(f"Scale {scale}: {race_probs} (max: {race_probs.max():.4f})")
-    
-    # Use optimal scale factor 6 based on diagnostic analysis
-    test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-        lambda x: np.exp(x * 6) / np.exp(x * 6).sum()  # Scale factor 6: optimal balance from diagnostics
-    )
+    else:
+        # Standard softmax normalization with configurable scale factor
+        print(f"\nUsing softmax normalization with scale factor={config.softmax_scale_factor}")
+        test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
+            lambda x: np.exp(x * config.softmax_scale_factor) / np.exp(x * config.softmax_scale_factor).sum()
+        )
     
     print(f"After normalization:")
     print(f"Final prediction range: {test_df['Predicted_Probability'].min():.4f} to {test_df['Predicted_Probability'].max():.4f}")
     print(f"Final prediction mean: {test_df['Predicted_Probability'].mean():.4f}")
-    
-    # Option 1: Weighted normalization (preserves more original signal) - now commented out
-    # epsilon = 1e-8
-    # test_df['Predicted_Probability'] = test_df.groupby(group_col)['pred_raw'].transform(
-    #     lambda x: (x + epsilon) / (x.sum() + len(x) * epsilon)
-    # )
 
     # Prepare model components for return
     model_components = {
-        'calibrator': None,
+        'calibrator': calibrator,
         'meta_model': meta_model,
         'trained_base_models': trained_base_models,
         'imputer': imputer,

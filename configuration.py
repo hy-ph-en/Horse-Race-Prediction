@@ -10,7 +10,7 @@ class Config():
         self.missing_strategy = 'drop'
 
         #Varry On Desired Training Time  
-        self.data_incusion = 1
+        self.data_incusion = 1      #Legacy 
 
 
         'Can Change the Features Desired for Training'
@@ -50,4 +50,27 @@ class Config():
         'JockeyRating', 'daysSinceLastRun', 'SireRating', 'DamsireRating', 'meanRunners'
         ]
 
+        'Model Calibration and Scaling Configuration'
+        # Softmax scaling factor for final probability normalization
+        # Higher values = more aggressive normalization (sharper probability distributions)
+        # Lower values = less aggressive normalization (softer probability distributions)  
+        # Range: 1-10, Current optimal: 6
+        self.softmax_scale_factor = 6
+        
+        # Meta-model calibration settings
+        # Set use_meta_calibration=True to apply post-hoc calibration to meta-model predictions
+        # This can help with over/under-confident predictions but may reduce discrimination
+        self.use_meta_calibration = False  # Whether to apply calibration to meta-model
+        self.calibration_method = 'isotonic'  # 'isotonic' or 'sigmoid'
+        self.calibration_cv_folds = 3  # Cross-validation folds for calibration
+        
+        # Alternative scaling methods (experimental)
+        # Set use_alternative_scaling=True to use weighted normalization instead of softmax
+        # This preserves more of the original signal but may not sum to 1 perfectly
+        self.use_alternative_scaling = False  # Use weighted normalization instead of softmax
+        self.epsilon_scaling = 1e-8  # Epsilon for weighted normalization
+        
+        
+        # Diagnostic and Testing Configuration
+        self.show_detailed_diagnostics = False  # Whether to show detailed scale factor testing and diagnostics
 
