@@ -43,7 +43,7 @@ def evaluate_model(model_components, train_data):
         lambda x: np.exp(x * scale_factor) / np.exp(x * scale_factor).sum()
     ).values
     
-    y_pred_binary = (y_pred_proba > 0.6).astype(int)
+    y_pred_binary = (y_pred_proba > 0.5).astype(int)
     
     # Calculate metrics
     metrics = {
@@ -165,9 +165,9 @@ def evaluate_model(model_components, train_data):
     print("\n=== MODEL EVALUATION METRICS ===")
     print(f"ROC AUC: {metrics['roc_auc']:.4f}")
     print(f"Log Loss: {metrics['log_loss']:.4f}")
-    print(f"Accuracy (0.6 threshold): {metrics['accuracy']:.4f}")
+    print(f"Accuracy (0.5 threshold): {metrics['accuracy']:.4f}")
     print(f"Brier Score: {metrics['brier_score']:.4f}")
-    print("\nClassification Report (0.6 threshold):")
+    print("\nClassification Report (0.5 threshold):")
     print(classification_report(y_true, y_pred_binary, zero_division=0))
     print("\nClassification Report (optimal threshold):")
     print(classification_report(y_true, y_pred_optimal, zero_division=0))

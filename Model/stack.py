@@ -1,8 +1,6 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import GroupKFold
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import StandardScaler
 from sklearn.calibration import CalibratedClassifierCV
 from configuration import Config
 
@@ -18,25 +16,9 @@ from xgboost import XGBClassifier
 # Import diagnostics
 from Evaluation.diagnostics import run_detailed_diagnostics
 
+# Import feature preparation from Data_Processing
+from Data_Processing.feature_preparation import prepare_features
 
-def prepare_features(df, feature_cols):
-    """
-    Impute and scale features while preserving feature names.
-    """
-    # Extract features as DataFrame to preserve names
-    feature_df = df[feature_cols].copy()
-    
-    imputer = SimpleImputer(strategy='median')
-    scaler  = StandardScaler()
-    
-    # Fit and transform while preserving structure
-    X_imputed = imputer.fit_transform(feature_df)
-    X_scaled = scaler.fit_transform(X_imputed)
-    
-    # Convert back to DataFrame with original column names
-    X_df = pd.DataFrame(X_scaled, columns=feature_cols, index=feature_df.index)
-    
-    return X_df, imputer, scaler
 
 def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_col):
     """
@@ -49,7 +31,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
     config = Config()
     
     # Prepare feature matrix (returns DataFrame now)
-    X_all_df, imputer, scaler = prepare_features(train_df, feature_cols)
+    X_all_df, preprocessors, _ = prepare_features(train_df, feature_cols)
     y_all = train_df[target_col].values
 
     # Placeholder for OOF and test preds
@@ -185,8 +167,7 @@ def stacking_train_predict(train_df, test_df, feature_cols, target_col, group_co
         'calibrator': calibrator,
         'meta_model': meta_model,
         'trained_base_models': trained_base_models,
-        'imputer': imputer,
-        'scaler': scaler,
+        'preprocessors': preprocessors,
         'oof_predictions': oof_preds,
         'feature_cols': feature_cols
     }
